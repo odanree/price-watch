@@ -8,7 +8,7 @@ const POLL_MINUTES = 60;
 const DEFAULT_THRESHOLD_PCT = 5;
 const POLL_BASE_SPACING_MS = 2000;
 const POLL_JITTER_MS = 1000;   // jittered token-bucket rate limiter between polls
-const POLL_TAB_TIMEOUT_MS = 20000; // how long we wait for a poll tab to report back
+const POLL_TAB_TIMEOUT_MS = 25000; // must exceed inject.js DEADLINE_MS (15000 in poll mode) with margin
 
 // In-flight poll tabs — itemId → { resolve, tabId, timer }
 const pollWaiters = new Map();

@@ -20,7 +20,10 @@
     canHandle: (url) => new URL(url).hostname.endsWith("bestbuy.com") && /\/site\//.test(url),
     extract: (doc) => {
       const canonicalUrl = doc.querySelector("link[rel=canonical]")?.href;
-      const ogImage = doc.querySelector("meta[property='og:image']")?.content;
+      const metaImage =
+        doc.querySelector("meta[property='og:image']")?.content ||
+        doc.querySelector("meta[name='twitter:image']")?.content ||
+        doc.querySelector("meta[name='twitter:image:src']")?.content;
 
       const ld = jsonLdProduct(doc);
       if (ld?.offers) {
@@ -30,7 +33,7 @@
           return {
             title: ld.name,
             priceCents,
-            imageUrl: [ld.image].flat()[0] || ogImage,
+            imageUrl: [ld.image].flat()[0] || metaImage,
             canonicalUrl
           };
         }
@@ -48,7 +51,7 @@
         doc.querySelector(".primary-image")?.src ||
         doc.querySelector(".image-block img")?.src ||
         doc.querySelector("img.primary-image")?.src ||
-        ogImage;
+        metaImage;
 
       return title && priceCents ? { title, priceCents, imageUrl, canonicalUrl } : null;
     }

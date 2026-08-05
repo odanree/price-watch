@@ -6,7 +6,11 @@
   });
   if (!candidates.length) return;
 
-  const DEADLINE_MS = 8000;
+  // Poll tabs open with active: false and Chrome throttles their JS, so SPA
+  // hydration takes noticeably longer than interactive tabs. Give poll mode
+  // a longer window; keep interactive snappy.
+  const isPollMode = /pricewatch-poll=/.test(location.hash);
+  const DEADLINE_MS = isPollMode ? 15000 : 8000;
   const start = Date.now();
 
   function tryExtract() {

@@ -20,7 +20,10 @@
     canHandle: (url) => new URL(url).hostname.endsWith("lowes.com") && /\/pd\//.test(url),
     extract: (doc) => {
       const canonicalUrl = doc.querySelector("link[rel=canonical]")?.href;
-      const ogImage = doc.querySelector("meta[property='og:image']")?.content;
+      const metaImage =
+        doc.querySelector("meta[property='og:image']")?.content ||
+        doc.querySelector("meta[name='twitter:image']")?.content ||
+        doc.querySelector("meta[name='twitter:image:src']")?.content;
 
       const ld = jsonLdProduct(doc);
       if (ld?.offers) {
@@ -30,7 +33,7 @@
           return {
             title: ld.name,
             priceCents,
-            imageUrl: [ld.image].flat()[0] || ogImage,
+            imageUrl: [ld.image].flat()[0] || metaImage,
             canonicalUrl
           };
         }
@@ -51,7 +54,7 @@
         doc.querySelector("[data-selector='hero-image'] img")?.src ||
         doc.querySelector(".pd-hero img")?.src ||
         doc.querySelector("img.styleguide--img")?.src ||
-        ogImage;
+        metaImage;
 
       return title && priceCents ? { title, priceCents, imageUrl, canonicalUrl } : null;
     }
