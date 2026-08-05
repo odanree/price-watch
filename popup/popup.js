@@ -64,6 +64,11 @@ document.getElementById("poll-now").addEventListener("click", () => {
   chrome.alarms.create("poll", { when: Date.now() + 100 });
 });
 
+// Present on popup only; absent on list.html (uses same script otherwise).
+document.getElementById("open-all")?.addEventListener("click", () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("list/list.html") });
+});
+
 // Live-refresh on any write to items (e.g. Track from a tab while popup is open).
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes[STORAGE_KEY]) render();

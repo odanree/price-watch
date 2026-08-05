@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Price Watch — All Items</title>
+    <link rel="stylesheet" href="../popup/popup.css" />
+    <style>
+      body { width: 720px; max-width: 100%; margin: 0 auto; padding: 0; }
+      header { padding: 16px 20px; }
+      h1 { font-size: 18px; }
+      ul { max-height: none; overflow: visible; }
+      .item { padding: 12px 20px; }
+      .thumb { width: 72px; height: 72px; }
+      .title { white-space: normal; font-size: 14px; }
+      .prices { font-size: 14px; }
+      .meta { font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Price Watch — All Items</h1>
+      <button id="poll-now" title="Poll all now">↻</button>
+    </header>
+    <ul id="items"></ul>
+    <template id="item-template">
+      <li class="item">
+        <img class="thumb" alt="" />
+        <div class="body">
+          <a class="title" target="_blank" rel="noopener"></a>
+          <div class="prices">
+            <span class="now"></span>
+            <span class="delta"></span>
+          </div>
+          <div class="meta">
+            <span class="vendor"></span>
+            <span class="checked"></span>
+          </div>
+        </div>
+        <button class="remove" title="Remove">✕</button>
+      </li>
+    </template>
+    <script src="../popup/popup.js"></script>
+  </body>
+</html>
