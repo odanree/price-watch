@@ -15,6 +15,7 @@ ul { list-style: none; margin: 0; padding: 0; max-height: 480px; overflow-y: aut
   display: flex; gap: 10px; padding: 10px 12px;
   border-bottom: 1px solid #f2f2f2;
 }
+.item.group-start { border-top: 3px solid #e0e0e0; }
 .thumb { width: 48px; height: 48px; object-fit: contain; flex-shrink: 0; background: #fafafa; }
 .body { flex: 1; min-width: 0; }
 .title {

@@ -8,7 +8,7 @@ const POLL_MINUTES = 60;
 const DEFAULT_THRESHOLD_PCT = 5;
 const POLL_BASE_SPACING_MS = 2000;
 const POLL_JITTER_MS = 1000;   // jittered token-bucket rate limiter between polls
-const POLL_TAB_TIMEOUT_MS = 25000; // must exceed inject.js DEADLINE_MS (15000 in poll mode) with margin
+const POLL_TAB_TIMEOUT_MS = 35000; // must exceed inject.js DEADLINE_MS (25000 in poll mode) with margin
 
 // In-flight poll tabs — itemId → { resolve, tabId, timer }
 const pollWaiters = new Map();
@@ -41,6 +41,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // keep the message channel open for async response
   }
   if (msg?.type === "poll-result") {
+    if (msg.diagnostic) {
+      console.log("[price-watch] pollmode image diagnostic", msg.vendor, msg.diagnostic);
+    }
     const waiter = pollWaiters.get(msg.itemId);
     if (waiter) {
       pollWaiters.delete(msg.itemId);
@@ -69,12 +72,18 @@ chrome.alarms.onAlarm.addListener(async ({ name }) => {
 // retry), and pushes the result back via a `poll-result` message. We then
 // close the tab. This is the only way to get post-hydration prices from vendors
 // like Home Depot / Costco / Target where the raw HTML doesn't include them.
+// Vendors whose React apps defer rendering when the tab is hidden
+// (visibility spoof from inject.js doesn't crack their guards). These
+// need a foreground poll tab, which briefly flashes in the tab strip.
+const VENDORS_NEEDING_FOCUS = new Set(["bestbuy"]);
+
 async function pollItem(item) {
   const sep = item.url.includes("#") ? "&" : "#";
   const pollUrl = `${item.url}${sep}pricewatch-poll=${item.id}`;
+  const needsFocus = VENDORS_NEEDING_FOCUS.has(item.vendor);
   let tabId = null;
   try {
-    const tab = await chrome.tabs.create({ url: pollUrl, active: false });
+    const tab = await chrome.tabs.create({ url: pollUrl, active: needsFocus });
     tabId = tab.id;
     const result = await new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -168,7 +177,14 @@ async function recordPrice(id, scraped) {
   cur.parseFailCount = 0;
   cur.history = [...cur.history.slice(-49), { at: Date.now(), priceCents }];
   // Backfill imageUrl for items originally tracked before the adapter emitted one.
-  if (!cur.imageUrl && scraped.imageUrl) cur.imageUrl = scraped.imageUrl;
+  const backfilled = !cur.imageUrl && !!scraped.imageUrl;
+  if (backfilled) cur.imageUrl = scraped.imageUrl;
+  console.log(
+    "[price-watch] recorded", cur.vendor,
+    "img?", !!cur.imageUrl,
+    backfilled ? "(backfilled)" : "",
+    "—", cur.title.slice(0, 50)
+  );
   await saveAll(items);
 
   // Transition trigger: fire only when we newly cross the threshold OR set a new all-time low.

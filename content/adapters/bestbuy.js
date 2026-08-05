@@ -45,7 +45,16 @@
 
   NS.register({
     vendor: "bestbuy",
-    canHandle: (url) => new URL(url).hostname.endsWith("bestbuy.com") && /\/site\//.test(url),
+    canHandle: (url) => {
+      try {
+        const u = new URL(url);
+        if (!u.hostname.endsWith("bestbuy.com")) return false;
+        // Best Buy PDP patterns: /site/{slug}/{sku}.p, /site/{sku}.p,
+        // /product/{slug}, or any path ending in .p (their canonical PDP suffix).
+        const p = u.pathname;
+        return /\/site\//.test(p) || /\/product\//.test(p) || /\.p$/.test(p);
+      } catch { return false; }
+    },
     extract: (doc) => {
       const canonicalUrl = doc.querySelector("link[rel=canonical]")?.href;
       const ld = jsonLdProduct(doc);
