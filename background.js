@@ -72,18 +72,12 @@ chrome.alarms.onAlarm.addListener(async ({ name }) => {
 // retry), and pushes the result back via a `poll-result` message. We then
 // close the tab. This is the only way to get post-hydration prices from vendors
 // like Home Depot / Costco / Target where the raw HTML doesn't include them.
-// Vendors whose React apps defer rendering when the tab is hidden
-// (visibility spoof from inject.js doesn't crack their guards). These
-// need a foreground poll tab, which briefly flashes in the tab strip.
-const VENDORS_NEEDING_FOCUS = new Set(["bestbuy"]);
-
 async function pollItem(item) {
   const sep = item.url.includes("#") ? "&" : "#";
   const pollUrl = `${item.url}${sep}pricewatch-poll=${item.id}`;
-  const needsFocus = VENDORS_NEEDING_FOCUS.has(item.vendor);
   let tabId = null;
   try {
-    const tab = await chrome.tabs.create({ url: pollUrl, active: needsFocus });
+    const tab = await chrome.tabs.create({ url: pollUrl, active: false });
     tabId = tab.id;
     const result = await new Promise((resolve) => {
       const timer = setTimeout(() => {
