@@ -27,6 +27,8 @@ ul { list-style: none; margin: 0; padding: 0; max-height: 480px; overflow-y: aut
 .delta.down { color: #0a7d2c; }
 .delta.up { color: #b00020; }
 .meta { font-size: 11px; color: #777; margin-top: 2px; display: flex; gap: 8px; }
+.spark { flex-shrink: 0; width: 90px; height: 30px; align-self: center; }
+.spark svg { overflow: visible; display: block; }
 .remove { align-self: center; border: none; color: #999; }
 .remove:hover { color: #b00020; }
 .empty { padding: 24px; text-align: center; color: #777; font-size: 13px; }
