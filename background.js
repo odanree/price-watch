@@ -83,9 +83,8 @@ async function pollItem(item) {
       }, POLL_TAB_TIMEOUT_MS);
       pollWaiters.set(item.id, { resolve, tabId, timer });
     });
-    const cents = result?.scraped?.priceCents;
-    if (cents) {
-      await recordPrice(item.id, cents);
+    if (result?.scraped?.priceCents) {
+      await recordPrice(item.id, result.scraped);
     } else {
       console.warn("[price-watch] poll got no price", item.title);
       await bumpParseFail(item.id);
@@ -149,10 +148,11 @@ async function trackItem({ vendor, scraped, url }) {
   return items[id];
 }
 
-async function recordPrice(id, priceCents) {
+async function recordPrice(id, scraped) {
   const items = await loadAll();
   const cur = items[id];
   if (!cur) return;
+  const priceCents = scraped.priceCents;
 
   // Capture pre-mutation state so we can detect threshold-crossing and new-low transitions.
   const baseline = cur.baselinePriceCents;
@@ -167,6 +167,8 @@ async function recordPrice(id, priceCents) {
   cur.lastCheckedAt = Date.now();
   cur.parseFailCount = 0;
   cur.history = [...cur.history.slice(-49), { at: Date.now(), priceCents }];
+  // Backfill imageUrl for items originally tracked before the adapter emitted one.
+  if (!cur.imageUrl && scraped.imageUrl) cur.imageUrl = scraped.imageUrl;
   await saveAll(items);
 
   // Transition trigger: fire only when we newly cross the threshold OR set a new all-time low.
