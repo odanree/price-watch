@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Price Watch",
+  "version": "0.1.0",
+  "description": "Track product prices across vendors; notify on drops.",
+  "permissions": ["storage", "alarms", "notifications", "tabs"],
+  "host_permissions": [
+    "*://*.amazon.com/*",
+    "*://*.bestbuy.com/*",
+    "*://*.target.com/*",
+    "*://*.lowes.com/*",
+    "*://*.homedepot.com/*",
+    "*://*.costco.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Price Watch"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.amazon.com/*",
+        "*://*.bestbuy.com/*",
+        "*://*.target.com/*",
+        "*://*.lowes.com/*",
+        "*://*.homedepot.com/*",
+        "*://*.costco.com/*"
+      ],
+      "js": [
+        "lib/price.js",
+        "content/adapters/index.js",
+        "content/adapters/amazon.js",
+        "content/adapters/bestbuy.js",
+        "content/adapters/target.js",
+        "content/adapters/lowes.js",
+        "content/adapters/homedepot.js",
+        "content/adapters/costco.js",
+        "content/adapters/generic.js",
+        "content/inject.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
