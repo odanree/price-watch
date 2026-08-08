@@ -1,4 +1,4 @@
-(function () {
+(async function () {
   const NS = self.PriceWatch;
   const url = location.href;
   const candidates = NS.adapters.filter((a) => {
@@ -6,10 +6,20 @@
   });
   if (!candidates.length) return;
 
-  // Poll tabs open with active: false and Chrome throttles their JS, so SPA
-  // hydration takes noticeably longer than interactive tabs. Give poll mode
-  // a longer window; keep interactive snappy.
-  const isPollMode = /pricewatch-poll=/.test(location.hash);
+  // Ask the background whether this tab was opened by the poll loop. Doing
+  // this via message (rather than a URL marker) survives redirects that
+  // strip hash fragments (Amazon does this on some PDPs).
+  let isPollMode = false;
+  let pollItemId = null;
+  await new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: "am-i-polling" }, (res) => {
+        if (chrome.runtime.lastError) return resolve();
+        if (res?.itemId) { isPollMode = true; pollItemId = res.itemId; }
+        resolve();
+      });
+    } catch { resolve(); }
+  });
   const DEADLINE_MS = isPollMode ? 25000 : 8000;
   const start = Date.now();
 
@@ -76,31 +86,33 @@
 
   // Extract-only mode: opened by the background poll loop. Push result back
   // and skip UI. Tab is closed by the background after the message arrives.
-  const pollMatch = location.hash.match(/pricewatch-poll=([a-f0-9]+)/);
-  if (pollMatch) {
-    const itemId = pollMatch[1];
+  if (isPollMode) {
+    const itemId = pollItemId;
+    // Fire-and-forget ping so the SW knows inject.js reached this point on this tab.
+    // If we see poll-started but no poll-result later, extraction hung; if we see
+    // neither, inject.js never ran (Amazon anti-bot, redirect, or CSP block).
+    try {
+      chrome.runtime.sendMessage({
+        type: "poll-started",
+        itemId,
+        url: location.href.slice(0, 120),
+        candidateCount: candidates.length,
+        candidateVendors: candidates.map((a) => a.vendor)
+      });
+    } catch { /* ignore */ }
+    const imagePathDiagnostic = (r) => imageDiag(r);
+    const pricePathDiagnostic = (r) => priceDiag(r);
     waitForExtract().then((r) => {
       console.log("[price-watch] poll-result", itemId, r?.scraped?.priceCents);
-      // If extraction succeeded on title+price but couldn't resolve an image,
-      // dump what image sources actually exist on the page so we can see
-      // what's happening in the poll-tab context.
       let diagnostic = null;
-      if (r?.scraped && !r.scraped.imageUrl) {
-        const primary = document.querySelector(".primary-image");
-        diagnostic = {
-          url: location.href,
-          adapterMatched: r?.adapter?.vendor,
-          primarySrc: primary?.src,
-          primaryDataSrc: primary?.dataset?.src,
-          primarySrcset: primary?.srcset,
-          primaryExists: !!primary,
-          primaryOuter: primary?.outerHTML?.slice(0, 200),
-          metaOg: document.querySelector("meta[property='og:image']")?.content,
-          bigImgs: [...document.querySelectorAll("img")]
-            .filter((i) => (i.naturalWidth || 0) > 200)
-            .slice(0, 3)
-            .map((i) => ({ src: i.src.slice(0, 100), cls: i.className.slice(0, 80) }))
-        };
+      try {
+        if (!r?.scraped?.priceCents) {
+          diagnostic = { reason: "no_price", ...pricePathDiagnostic(r) };
+        } else if (!r.scraped.imageUrl) {
+          diagnostic = { reason: "no_image", ...imagePathDiagnostic(r) };
+        }
+      } catch (e) {
+        diagnostic = { reason: "diagnostic_error", error: String(e), stack: String(e.stack).slice(0, 300) };
       }
       chrome.runtime.sendMessage({
         type: "poll-result",
@@ -109,8 +121,66 @@
         scraped: r?.scraped || null,
         diagnostic
       });
+    }).catch((e) => {
+      // waitForExtract itself failed — the poll tab is unusable. Report anyway
+      // so the SW isn't stuck waiting for a message that never comes.
+      chrome.runtime.sendMessage({
+        type: "poll-result",
+        itemId,
+        vendor: null,
+        scraped: null,
+        diagnostic: { reason: "waitForExtract_threw", error: String(e), url: location.href }
+      });
     });
     return;
+
+    function imageDiag(r) {
+      const primary = document.querySelector(".primary-image");
+      return {
+        url: location.href,
+        adapterMatched: r?.adapter?.vendor,
+        primarySrc: primary?.src,
+        primaryDataSrc: primary?.dataset?.src,
+        primarySrcset: primary?.srcset,
+        primaryExists: !!primary,
+        primaryOuter: primary?.outerHTML?.slice(0, 200),
+        metaOg: document.querySelector("meta[property='og:image']")?.content,
+        bigImgs: [...document.querySelectorAll("img")]
+          .filter((i) => (i.naturalWidth || 0) > 200)
+          .slice(0, 3)
+          .map((i) => ({ src: i.src.slice(0, 100), cls: i.className.slice(0, 80) }))
+      };
+    }
+
+    function priceDiag(r) {
+      const body = document.body.textContent || "";
+      return {
+        url: location.href,
+        adapterMatched: r?.adapter?.vendor || "none",
+        title: document.querySelector("#productTitle, #title, main h1")?.textContent?.trim()?.slice(0, 80),
+        // Amazon-specific price containers
+        apexPricetoPay: document.querySelector(".apex-pricetopay-value")?.textContent?.slice(0, 60),
+        apexAccessibility: document.querySelector(".apex-pricetopay-accessibility-label")?.textContent?.slice(0, 60),
+        reinventMargin: document.querySelector(".reinventPricePriceToPayMargin")?.textContent?.slice(0, 60),
+        aOffscreen: document.querySelector(".a-price .a-offscreen")?.textContent?.slice(0, 60),
+        corePriceDisplay: !!document.querySelector("#corePriceDisplay_desktop_feature_div"),
+        buyboxPrice: document.querySelector("#buybox .a-price .a-offscreen")?.textContent?.slice(0, 60),
+        // JSON-LD availability
+        jsonLdCount: document.querySelectorAll('script[type="application/ld+json"]').length,
+        // Generic "any element with 'price' in class + a $-value" — the fishing-net fallback
+        priceLike: [...document.querySelectorAll('[class*="price" i]')]
+          .filter((el) => /\$\d/.test(el.textContent))
+          .slice(0, 5)
+          .map((el) => ({
+            cls: el.className.slice(0, 80),
+            text: el.textContent.trim().replace(/\s+/g, " ").slice(0, 50)
+          })),
+        // Bot-check / redirect indicators
+        isBotCheck: /Type the characters|Enter the characters|Sorry.{0,20}robot|automated queries/i.test(body.slice(0, 5000)),
+        // Sometimes Amazon shows "Currently unavailable" instead of a price
+        currentlyUnavailable: /Currently unavailable/i.test(body.slice(0, 5000))
+      };
+    }
   }
 
   // Normal mode: mount the Track button once extraction succeeds.

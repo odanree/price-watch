@@ -12,6 +12,9 @@ const POLL_TAB_TIMEOUT_MS = 35000; // must exceed inject.js DEADLINE_MS (25000 i
 
 // In-flight poll tabs — itemId → { resolve, tabId, timer }
 const pollWaiters = new Map();
+// tabId → itemId, so a content script that got redirected off our poll URL
+// (Amazon strips hash fragments on some pages) can still ask "am I a poll tab?"
+const pollTabItemMap = new Map();
 
 chrome.runtime.onInstalled.addListener(async () => {
   chrome.alarms.create("poll", { periodInMinutes: POLL_MINUTES });
@@ -40,9 +43,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     return true; // keep the message channel open for async response
   }
+  if (msg?.type === "am-i-polling") {
+    const itemId = pollTabItemMap.get(sender.tab?.id);
+    sendResponse({ itemId: itemId || null });
+    return; // sync
+  }
+  if (msg?.type === "poll-started") {
+    console.log("[price-watch] poll-started", msg.itemId, msg.url, "adapters:", msg.candidateVendors);
+    sendResponse({ ok: true });
+    return;
+  }
   if (msg?.type === "poll-result") {
     if (msg.diagnostic) {
-      console.log("[price-watch] pollmode image diagnostic", msg.vendor, msg.diagnostic);
+      console.log("[price-watch] diagnostic", msg.diagnostic.reason, msg.vendor || "?", msg.diagnostic);
     }
     const waiter = pollWaiters.get(msg.itemId);
     if (waiter) {
@@ -73,12 +86,14 @@ chrome.alarms.onAlarm.addListener(async ({ name }) => {
 // close the tab. This is the only way to get post-hydration prices from vendors
 // like Home Depot / Costco / Target where the raw HTML doesn't include them.
 async function pollItem(item) {
-  const sep = item.url.includes("#") ? "&" : "#";
-  const pollUrl = `${item.url}${sep}pricewatch-poll=${item.id}`;
   let tabId = null;
   try {
-    const tab = await chrome.tabs.create({ url: pollUrl, active: false });
+    const tab = await chrome.tabs.create({ url: item.url, active: false });
     tabId = tab.id;
+    // Map tabId → itemId so inject.js can ask "am I polling" regardless of
+    // whether the vendor redirected our URL (Amazon strips hash fragments
+    // on some pages, which used to hide poll mode from inject.js).
+    pollTabItemMap.set(tabId, item.id);
     const result = await new Promise((resolve) => {
       const timer = setTimeout(() => {
         pollWaiters.delete(item.id);
@@ -97,6 +112,7 @@ async function pollItem(item) {
     await bumpParseFail(item.id);
   } finally {
     if (tabId != null) {
+      pollTabItemMap.delete(tabId);
       try { await chrome.tabs.remove(tabId); } catch { /* already closed */ }
     }
   }
